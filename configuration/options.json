@@ -1,0 +1,6 @@
+{
+  "alerts_duration": 60,
+  "capture_auto": true,
+  "capture_threshold": 60999,
+  "content_can_play_in_background": false
+}

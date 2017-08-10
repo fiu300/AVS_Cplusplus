@@ -1,0 +1,317 @@
+<html>
+<head>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Alexa Voice Service Agent</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/icon?family=Material+Icons">
+<link rel="stylesheet" href="https://code.getmdl.io/1.2.1/material.light_blue-blue.min.css">
+<script defer src="https://code.getmdl.io/1.2.1/material.min.js"></script>
+<style>
+.flex-container {
+  display: flex;
+  align-items: center;
+}
+.flex-cell {
+  flex: 1;
+}
+#capture i {
+  color: dodgerblue;
+}
+#capture.busy i {
+  color: orange;
+}
+#capture .indicator {
+  font-size: 1vh;
+  margin: 0 26 0 26;
+  position: relative;
+  height: 1em;
+}
+#capture .integral0 {
+  position: absolute;
+  height: 1em;
+  background-color: orange;
+}
+#capture .integral1 {
+  position: absolute;
+  height: 1em;
+  background-color: dodgerblue;
+}
+#recognizer.active i {
+  color: orange;
+}
+#speaker.playing i {
+  color: orange;
+}
+#alerts div {
+  display: inline-flex;
+  align-items: center;
+  margin: 1em;
+}
+#alerts div.active {
+  color: orange;
+}
+#alerts div i {
+  margin-right: 0.75em;
+}
+#alerts div span {
+  font-size: 2em;
+}
+#alerts div button {
+  margin-left: 0.75em;
+}
+#connection.online .connect i {
+  color: dodgerblue;
+}
+#connection .disconnect i {
+  color: dodgerblue;
+}
+#connection.online .disconnect i {
+  color: black;
+}
+#recognizer, #playback, #alerts, #connection {
+  text-align: center;
+}
+</style>
+<script>
+document.addEventListener("DOMContentLoaded", function() {
+  var capture = document.getElementById("capture");
+  var capture_threshold = capture.querySelector(".threshold");
+  var capture_integral0 = capture.querySelector(".integral0");
+  var capture_integral1 = capture.querySelector(".integral1");
+  var recognizer = document.getElementById("recognizer");
+  var recognize = recognizer.querySelector("button");
+  var recognize_icon = recognizer.querySelector("i");
+  var speaker = document.getElementById("speaker");
+  var speaker_mute = speaker.querySelector(".mute");
+  var speaker_icon = speaker_mute.querySelector("i");
+  var speaker_volume = speaker.querySelector(".volume");
+  var playback = document.getElementById("playback");
+  var play = playback.querySelector(".play");
+  var pause = playback.querySelector(".pause");
+  var next = playback.querySelector(".next");
+  var previous = playback.querySelector(".previous");
+  var options = document.getElementById("options");
+  var alerts_duration = options.querySelector(".alerts-duration");
+  var capture_auto = options.querySelector(".capture-auto input");
+  var content_background = options.querySelector(".content-background input");
+  var connection = document.getElementById("connection");
+  var connect = connection.querySelector(".connect");
+  var disconnect = connection.querySelector(".disconnect");
+  var notification = document.querySelector(".mdl-js-snackbar");
+  var toast = function(message) {
+    notification.MaterialSnackbar.showSnackbar({message: message});
+  };
+  var xhr = new XMLHttpRequest();
+  xhr.open("GET", "session");
+  xhr.onload = function() {
+    var ws = new WebSocket(xhr.responseText);
+    var send = function(json) {
+      ws.send(JSON.stringify(json));
+    };
+    var put = function(json, name, value) {
+      json[name] = value;
+      return json;
+    };
+    var check_sender = function(name, checkbox) {
+      return function() {
+        send(put({}, name, checkbox.checked));
+      };
+    };
+    var fixed_sender = function(json) {
+      return function() {
+        send(json);
+      };
+    };
+    var empty_sender = function(name) {
+      return function() {
+        send(put({}, name, null));
+      };
+    };
+    var muted;
+    ws.onopen = function() {
+      capture_threshold.addEventListener("change", function() {
+        send({"capture.threshold": parseInt(capture_threshold.value)});
+      }, false);
+      recognize.addEventListener("mousedown", fixed_sender({"capture.force": true}), false);
+      recognize.addEventListener("mouseup", fixed_sender({"capture.force": false}), false);
+      recognize.addEventListener("keydown", function(event) {
+        if (event.key != "Tab") send({"capture.force": true});
+      }, false);
+      recognize.addEventListener("keyup", function(event) {
+        if (event.key != "Tab") send({"capture.force": false});
+      }, false);
+      speaker_mute.addEventListener("click", function() {
+        send({"speaker.muted": !muted});
+      }, false);
+      speaker_volume.addEventListener("change", function() {
+        send({"speaker.volume": parseInt(speaker_volume.value)});
+      }, false);
+      play.addEventListener("click", empty_sender("playback.play"), false);
+      pause.addEventListener("click", empty_sender("playback.pause"), false);
+      next.addEventListener("click", empty_sender("playback.next"), false);
+      previous.addEventListener("click", empty_sender("playback.previous"), false);
+      alerts_duration.addEventListener("change", function() {
+        send({"alerts.duration": parseInt(alerts_duration.value)});
+      }, false);
+      capture_auto.addEventListener("change", check_sender("capture.auto", capture_auto), false);
+      content_background.addEventListener("change", check_sender("content.background", content_background), false);
+      connect.addEventListener("click", empty_sender("connect"), false);
+      disconnect.addEventListener("click", empty_sender("disconnect"), false);
+      send({hello: null});
+    };
+    var threshold;
+    var updateAlerts = function() {
+      var container = document.getElementById("alerts");
+      var alerts = [];
+      var pad = function(x) {
+        return (x < 10 ? "0" : "") + x;
+      };
+      var refresh = function() {
+        for (var i = 0; i < alerts.length; ++i) {
+          var a = alerts[i];
+          var t;
+          if (a.type == "TIMER") {
+            var s = parseInt((a.at.getTime() - Date.now()) / 1000);
+            if (s < 0) {
+              t = "-";
+              s = -s;
+            } else {
+              t = "";
+            }
+            var tt = pad(parseInt(s / 60) % 60) + ':' + pad(s % 60);
+            var h = parseInt(s / 3600);
+            if (h > 0) {
+              tt = (h % 24) + ':' + tt;
+              var d = parseInt(h / 24);
+              if (d > 0) tt = d + '.' + tt;
+            }
+            t += tt;
+          } else {
+            t = pad(a.at.getHours()) + ':' + pad(a.at.getMinutes());
+            if (a.at.getTime() - Date.now() >= 24 * 60 * 60 * 1000) t = (a.at.getMonth() + 1) + '/' + a.at.getDate() + ' ' + t;
+          }
+          a.label.innerText = t;
+        }
+      };
+      setInterval(refresh, 1000);
+      return function(source) {
+        container.innerHTML = "";
+        alerts = [];
+        for (var i = 0; i < source.length; ++i) {
+          var a = source[i];
+          var e = document.createElement("div");
+          e.innerHTML = '<i class="material-icons">' + (a.type == "TIMER" ? "timer" : "alarm") + '</i><span></span>';
+          if (a.active) {
+            e.className = "active";
+            var button = document.createElement("button");
+            button.className = "mdl-button mdl-js-button mdl-button--raised mdl-js-ripple-effect";
+            button.innerText = "Stop";
+            button.addEventListener("click", function() {
+              send({"alerts.stop": a.token});
+            });
+            componentHandler.upgradeElement(button);
+            e.appendChild(button);
+          }
+          container.appendChild(e);
+          alerts.push({
+            type: a.type,
+            at: new Date(a.at),
+            label: e.querySelector("span")
+          });
+        }
+        refresh();
+      };
+    }();
+    ws.onmessage = function(event) {
+      var data = JSON.parse(event.data);
+      if (data.capture !== undefined) {
+        capture.classList[data.capture.busy ? "add" : "remove"]("busy");
+        capture_integral0.style.width = (data.capture.integral / 1024) + '%';
+        capture_integral1.style.width = (Math.min(data.capture.integral, threshold) / 1024) + '%';
+      }
+      var state = data.state_changed;
+      if (state !== undefined) {
+        recognize.MaterialButton[state.online ? "enable" : "disable"]();
+        recognizer.classList[state.online && state.dialog.active ? "add" : "remove"]("active");
+        recognize_icon.innerText = !state.online ? "mic_off" : state.dialog.expecting_speech ? "help" : state.dialog.playing ? "record_voice_over" : "mic";
+        speaker.classList[state.online && state.content.playing ? "add" : "remove"]("playing");
+        updateAlerts(state.alerts);
+        connection.classList[state.online ? "add" : "remove"]("online");
+      }
+      var options = data.options_changed;
+      if (options !== undefined) {
+        threshold = options.capture.threshold;
+        capture_threshold.MaterialSlider.change(threshold);
+        muted = options.speaker.muted;
+        speaker_icon.innerText = muted ? "volume_off" : "volume_up";
+        speaker_volume.MaterialSlider.change(options.speaker.volume);
+        alerts_duration.parentElement.MaterialTextfield.change(options.alerts.duration);
+        capture_auto.parentElement.MaterialSwitch[options.capture.auto ? "on" : "off"]();
+        content_background.parentElement.MaterialSwitch[options.content.can_play_in_background ? "on" : "off"]();
+      }
+    };
+  };
+  xhr.send();
+}, false);
+</script>
+</head>
+<body>
+<div class="mdl-layout mdl-js-layout">
+  <main class="mdl-layout__content">
+    <div class="mdl-grid">
+      <div id="capture" class="mdl-cell mdl-cell--12-col flex-container">
+        <button class="mdl-button mdl-js-button" disabled><i class="material-icons">mic</i></button>
+        <div class="flex-cell">
+          <div class="indicator">
+            <div class="integral0"></div>
+            <div class="integral1"></div>
+          </div>
+          <input class="mdl-slider mdl-js-slider threshold" type="range" max="102400">
+        </div>
+      </div>
+      <div id="recognizer" class="mdl-cell mdl-cell--12-col">
+        <button class="mdl-button mdl-js-button mdl-button--raised mdl-js-ripple-effect" autofocus><i class="material-icons">mic</i></button>
+      </div>
+      <div id="speaker" class="mdl-cell mdl-cell--12-col flex-container">
+        <button class="mdl-button mdl-js-button mdl-js-ripple-effect mute"><i class="material-icons">volume_up</i></button>
+        <div class="flex-cell">
+          <input class="mdl-slider mdl-js-slider volume" type="range" max="100">
+        </div>
+      </div>
+      <div id="playback" class="mdl-cell mdl-cell--12-col">
+        <button class="mdl-button mdl-js-button mdl-js-ripple-effect previous"><i class="material-icons">skip_previous</i></button>
+        <button class="mdl-button mdl-js-button mdl-js-ripple-effect pause"><i class="material-icons">pause</i></button>
+        <button class="mdl-button mdl-js-button mdl-js-ripple-effect play"><i class="material-icons">play_arrow</i></button>
+        <button class="mdl-button mdl-js-button mdl-js-ripple-effect next"><i class="material-icons">skip_next</i></button>
+      </div>
+      <div id="alerts" class="mdl-cell mdl-cell--12-col"></div>
+      <div id="options" class="mdl-cell mdl-cell--4-col mdl-cell--4-offset">
+        <div class="mdl-cell mdl-cell--12-col mdl-textfield mdl-js-textfield mdl-textfield--floating-label">
+          <input type="number" class="mdl-textfield__input alerts-duration">
+          <label class="mdl-textfield__label">Alerts Duration</label>
+        </div>
+        <div class="mdl-cell mdl-cell--12-col">
+          <label class="mdl-switch mdl-js-switch mdl-js-ripple-effect capture-auto">
+            <input type="checkbox" class="mdl-switch__input">
+            <span class="mdl-switch__label">Capture Auto</span>
+          </label>
+        </div>
+        <div class="mdl-cell mdl-cell--12-col">
+          <label class="mdl-switch mdl-js-switch mdl-js-ripple-effect content-background">
+            <input type="checkbox" class="mdl-switch__input">
+            <span class="mdl-switch__label">Content Can Play In Background</span>
+          </label>
+        </div>
+      </div>
+      <div id="connection" class="mdl-cell mdl-cell--12-col">
+        <button class="mdl-button mdl-js-button mdl-js-ripple-effect connect"><i class="material-icons">network_wifi</i></button>
+        <button class="mdl-button mdl-js-button mdl-js-ripple-effect disconnect"><i class="material-icons">signal_wifi_off</i></button>
+      </div>
+    </div>
+  </main>
+</div>
+<div class="mdl-snackbar mdl-js-snackbar">
+  <div class="mdl-snackbar__text"></div>
+  <button class="mdl-snackbar__action"></button>
+</div>
+</body>
+</html>

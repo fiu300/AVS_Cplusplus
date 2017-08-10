@@ -1,0 +1,26 @@
+{
+	"profile": {
+		"client_id": "amzn1.application-oa2-client.cb7ccce1bebb450aa00ac960b95593d6",
+		"client_secret": "e38112ca3cc98d34e30dc7bc05fc2f5dff673a01ef4a511670be45cec5c259ee",
+		"redirect_uri": "https://localhost:3000/authresponse",
+		"product_id": "smartspeakertestdevice",
+		"device_serial_number": 1234567
+	},
+	"service": {
+		"host": "localhost",
+		"http2": 3000,
+		"websocket": 3002,
+		"key": "configuration/server.key",
+		"certificate": "configuration/server.crt"
+	},
+	"sounds": {
+		"timer": {
+			"foreground": "sounds/start.mp3",
+			"background": "sounds/stop.mp3"
+		},
+		"alarm": {
+			"foreground": "sounds/alarm.mp3",
+			"background": "sounds/error.mp3"
+		}
+	}
+}
